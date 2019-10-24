@@ -15,6 +15,9 @@ the learning management system like viewed announcements, interaction with discu
 To analyze the students’ performance, the target “Class” attribute was discretized into orindal values based
 upon students’ grades. Hence, we had three categories of student classes: **High/H, Low/L and Medium/M.**
 
+
+**Please read the markdown html document for detailed analysis.**
+
 **Techniques Used:-**
 ***1. Ordered Logistic Regresison***
 ***2. Artificial neural Network(using Keras for R***
@@ -27,8 +30,16 @@ upon students’ grades. Hence, we had three categories of student classes: **Hi
 2. artificial Neural Network:- 76.92%
 3. Random Forest Classifier:-  76.92% 
    random guess Baseline:- 33.33%
-   
-   **Please read the markdown html document for detailed analysis.**
+
+Artificial Neural Network model Architecture:_
+
+![alt text](https://github.com/mihird94/EduTech/blob/master/annf_model_archi.PNG)
+
+Important Features(as given my Random forest Varimp):-
+
+
+![alt text](https://github.com/mihird94/EduTech/blob/master/varimpplot.PNG)
+
 
 
 
