@@ -1,0 +1,385 @@
+---
+title:  <span style="color:blue">IST707_HW4 Logistic Regression and ANN</span>
+author: <span style="color:blue">Mihir Deshpande</span>
+date: <span style="color:blue"> April 29, 2019 </span>
+output: html_document
+---
+
+### This HW assigment deals with a classifiction problem to predict the education performance of the students based on various features related to education. The data is available on Kaggle .
+
+- The HW involves using 3 differnt techniques to classify the students performance 
+
+1. Ordered logistic Regression, This is important as the target attribute is ordinal is nature That is  Low < Medium < High
+
+2. Artificial Neural Network 
+
+3. Any Algoritm Covered in the material(I chose Random Forest)
+
+- Preprocessing 
+
+-I converted the data into dummy variables
+
+-removed Zero Variance and near Zero variance variables
+
+-Used PCA to further reduce the dimensionality
+
+1. For the logistic regression Model 
+
+-Made the target attribute into an order factor 
+
+-As a post-processing step, I removed the variables which were statistically insignificant.
+
+
+2. For the ANN model, I created dummies and separted the x and y attributes and used one-hot encoding for the Y-attribute. I also scaled the numeric variables 
+
+3. For the Random Forest model, I scaled the numeric variables
+
+####Load the libraries:-
+
+```{r}
+library(caret)
+library(keras)
+library(ordinal)
+library(doParallel)
+```
+
+
+
+
+#### Load the data 
+
+-change the working directory where the data file is located 
+
+```{r}
+setwd('C:\\Users\\mihir\\Desktop\\IST 707\\HW4')
+
+edu_data<-read.csv('xAPI-Edu-Data.csv')
+```
+
+
+#### missing values 
+
+```{r}
+
+sapply(edu_data,function(x) sum(is.na(x)))
+#no missing values 
+```
+
+
+
+
+#### Logistic Regression
+
+#####Pre-processing:-
+
+**Make ordered factor for Class:-**
+
+```{r}
+
+edu_data$Class<-factor(edu_data$Class, levels=c("L", "M", "H"), ordered=TRUE)
+```
+
+``` This is done to preserve the order of the class attribue```
+
+
+**Making dummy variables:-**
+
+```{r}
+
+dummyDF<-edu_data[,! names(edu_data) %in% c("Class")]
+dummies<-dummyVars("~.",data=dummyDF)
+dummyDF<-predict(dummies,newdata=dummyDF)
+dummyDF<-as.data.frame(dummyDF)
+```
+
+```This will help to eliminate levels that don't add much information```
+
+**Removing Zero and Near Zero Variance variables:-**
+
+```{r}
+nearzv<-nearZeroVar(dummyDF)
+dummyDF<-dummyDF[,-nearzv]
+dummyDF$Class<-edu_data$Class
+```
+
+``` variables with zero and near zero variance don't add much information to the model and can be eliminated```
+
+**PCA to further reduce the dimentionality of the data:-**
+
+```{r}
+preProc <- preProcess(dummyDF, method="pca")
+dummyDF<-predict(preProc,dummyDF)
+
+```
+
+-Used the preProcess function from caret to get the Principal components. 
+
+-22 principal components explain around 95% variance of the data. 
+
+-This was done as the number of columns were large(due to dummification) and number of rows were not sufficiently large which might lead to overfitting.```
+
+
+**Splitting into training and testing sets:-**
+
+```{r}
+set.seed(10)
+ind<-createDataPartition(dummyDF$Class,p=0.7,list = FALSE)
+trainDF<-dummyDF[ind,]
+testDF<-dummyDF[-ind,]
+```
+
+**vanilla model using clmfit:-**
+
+```{r}
+clmfit<-clm(Class~.,link='logit',data=trainDF)
+summary(clmfit)
+```
+
+-There are many variables that are statistically insignificant with p value greater than 0.05. 
+
+-These coefficient estimates do not give strong evidence to reject the null hypothsis. Therefore , we can drop these variables
+
+**Predictions and Accuracy for the Vanilla Model:-**
+
+```{r}
+pred<-predict(clmfit,testDF, type="class")$fit
+confusionMatrix(pred,testDF$Class)
+```
+
+
+
+**Updated model with only statistically significant variables:-**
+
+
+```{r}
+
+
+pcaTrain<-trainDF[,names(trainDF) %in% c("PC1","PC2","PC3","PC5","PC7","PC12","PC9","PC14","PC15","PC16","PC18","PC20","Class")]
+pcaTest<-testDF[,names(trainDF) %in% c("PC1","PC2","PC3","PC5","PC12","PC7","PC9","PC14","PC15","PC16","PC18","PC20","Class")]
+clmfit2<-clm(Class~.,link='logit',data=pcaTrain)
+
+```
+
+
+**Predictions and Accurracy for the updated model:-**
+
+
+```{r}
+pred2<-predict(clmfit2,pcaTest,type='class')$fit
+confusionMatrix(pred2,pcaTest$Class)
+```
+
+```There is an improvement in accuracy after removing the statistically insignificant variables it gives an accuracy of 0.7203```
+
+**Model interpretation**
+
+-Coeffiecients
+
+-PC1: The log(odds) or the beta coefficient  is -1.3022.With one unit change in PC1,the odds of getting to the higher side of performance  changes  by e^(-1.3022) which is 0.27193.Which means that the odds of moving to the higher side are reduced.(Higher side means from Low to Medium to High as the attribute is ordinal)
+
+-PC2: The log(odds) is 0.3872. With one unit change in PC2,  the odds of getting to the higher side of performance  changes  by e^(0.3872) which is 1.47285. Which means that odds of moving to the higher side are increased
+
+-All the other coeffiecients can be interpreted in a similar manner
+
+-intercepts 
+
+- L|M intercept is -3.422 which can be interpreted as the odds of Low versus Medium and high are e^(-3.422) or 0.03265 when all the other attributes are zero
+
+-M|H intercept is 2.897 which  can be interpreted as the odds of Low and Medium versus High are e^(2.897) or 18.11970 when all the other attributes are zero
+
+-Logits are calculated for all the classes of the target attribute and probabilities are derived for the class being Low or Medium or High. The class with the highest probabily is the predited class
+
+
+
+#### Neural Network
+
+- For the neural network model, I played around with a bunch of parameters including the activation function,number of layers and number of nodes 
+
+_ I found that the models with activation function as tanh and relu were performing comparably and sigmoid was not performing up to their level
+
+- Higher epochs were giving less accuracy for the same model
+
+-Final model architecture chosen was Input Layer >> Hidden Layer With 150 nodes>> Hidden layer with 50 nodes >> Output layer and dropout layers in between 
+
+- I was skeptical to use such high number of nodes and layers to a small dataset as I thought it might lead to overfitting, but this architecture was performing better than others empirically and dropout layers  might have taken care of the overfitting
+
+-Activation Function chosen was tanh and softmax for the output layer
+
+-Optimizer chosen was adam
+
+#####Pre-processing:-
+
+**Scaling:-**
+
+```{r}
+
+trainDF[,sapply(trainDF,is.numeric)]<-scale(trainDF[,sapply(trainDF,is.numeric)])
+testDF[,sapply(testDF,is.numeric)]<-scale(testDF[,sapply(testDF,is.numeric)])
+
+```
+
+
+**Separating X and Y attributes  for both training and testing sets:-**
+
+```{r}
+train_x<-trainDF[,!(colnames(trainDF) %in% 'Class')]
+train_y<-trainDF[,c("Class")]
+
+test_x<-testDF[,!(colnames(testDF) %in% 'Class')]
+test_y<-testDF[,c("Class")]
+```
+
+
+**One-Hot Encoding for y attributes:-**
+
+```{r}
+y_data_oneh=to_categorical(as.numeric(train_y))
+y_data_oneh=y_data_oneh[,-1]
+test_y=to_categorical(as.numeric(test_y))
+test_y=test_y[,-1]
+
+```
+
+
+**Convert the training  sets into matrix**:-
+
+```{r}
+train_x<-as.matrix(train_x)
+test_x<-as.matrix(test_x)
+```
+
+This was done as keras does not accept dataframes as input data
+
+**model Architecture:-**
+
+
+```{r}
+
+model_keras <- keras_model_sequential()
+model_keras %>%
+  layer_dense(units = 22,
+              activation = "tanh",input_shape =22)%>%
+  layer_dropout(rate = 0.1) %>%
+  layer_dense(units = 150,
+              activation = "tanh") %>%
+  layer_dense(units = 50,
+              activation = "tanh") %>%
+  layer_dropout(rate = 0.1) %>%
+  layer_dense(units = 3,
+              kernel_initializer = "uniform",
+              activation = "softmax") %>%
+  compile(optimizer = "adam",
+          loss = "categorical_crossentropy",
+          metrics = c("accuracy"))
+
+
+```
+
+``` input layer size is 22 nodes which is the columnar shape of the training matrix(after pca)```
+
+**Model Fitting:-**
+
+```{r}
+model_keras %>% fit(train_x, y_data_oneh, epochs = 100, batch_size =50)
+```
+
+
+**Model Evaluation:-**
+
+```{r}
+model_keras%>%evaluate(test_x, test_y, batch_size = 50)
+```
+
+- I got the max  accuracy of 0.7692%, but the results are variable, Each time I run it the model accuracy changes to some extent. 
+ 
+- This maybe due to the fact that each time the model converges to different weights.
+
+-The best performing model can be saved to disk and re-used to avoid this uncertainity
+
+
+
+
+**Load saved model from disk:-**
+
+
+```{r}
+loaded_model <- load_model_hdf5("my_model.h5")
+loaded_model%>%evaluate(test_x, test_y, batch_size = 50)
+```
+
+```This is the model that gives the best accuracy of around 77%```
+
+
+#### Random Forest Model:-
+
+- For random forest model I used the original dataset without pca and removing near zero variance, as the trees use information gain and there insignificant variables are not considered for the splits. Also, the variable importance plot is a nice way for model interpretation and can be used to obtain most important variables.
+
+**get test and train from the original dataset:-**
+
+```{r}
+set.seed(1)
+ind<-createDataPartition(edu_data$Class,p=0.7,list=FALSE)
+edu_train<-edu_data[ind,]
+edu_test<-edu_data[-ind,]
+```
+
+
+**Random Forest Model Using caret:-**
+
+```{r}
+cl <- makeCluster(detectCores())
+registerDoParallel(cl)
+
+set.seed(0)
+model_rf<- train(Class ~ ., data = edu_train,
+                 preProcess = c("center", "scale"),
+                 method = "rf",
+                 trControl = trainControl(method = "cv",
+                                          number = 3),allowParallel=TRUE,
+                 tunegrid = expand.grid(minsplit = 1:50, maxdepth = 1:10),
+                 tuneLength=20)
+
+plot(model_rf)
+model_rf
+
+
+stopCluster(cl)
+registerDoSEQ()
+```
+
+
+**Predictions:-**
+
+```{r}
+pred_rf<-predict(model_rf,edu_test)
+confusionMatrix(pred_rf,edu_test$Class)
+```
+
+```The Accuracy score for random forest model is better than the logistic regression model and almost comparable to the Neural network model```
+
+**Variable Important Plot:-**
+
+```{r}
+plot(varImp(model_rf))
+```
+
+
+-It it found that VisitedResources,studentabsenceunder-7,raisedHands, Announcements view, Discussions, parentsansweringsurvey-yes are some of the most important variables that influence student performance.
+Since  this plot is a bit unclear in the markdown, I will attach a zoomed version with the submission
+
+
+-I also built a svm and knn model which gave me accuarcies of 41% and 66% respectively. Randomforest performed better than these two for this probelm.
+
+-randomForest and Neural network models gave the comparable accuracies of around 77%
+
+-Logistic Regression model had the lowest  accuracy amongst all the 3 models of around 72%.
+
+-This makes sense as with such small size of data, it can be difficult for a simpler learning algorithm like 
+logistic regression to derive a good decision boundary. On the other hand, Neural networks and random forest can 
+express complex hypothesis space.
+
+- Among all the models, the neural network model took the longest to train. This makes sense as the model as to go through 100 epochs to calculate the weights in the network
+
+-Second was randomforest as I have provided a tunegrid wit cross-validation so it trains a lot of models
+
+- Third was the order logistic which took the shortest to train as It is a singular model that is being built
